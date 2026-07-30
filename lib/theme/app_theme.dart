@@ -2,26 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'brand_tokens.dart';
 
-/// TAVO — App theme.
-///
-/// Dark and voice-first. Built entirely on [TavoColors], [TavoGradients]
-/// and [TavoType] so the whole app stays in sync with the brand identity.
-///
-/// Arabic-first: the default font is IBM Plex Sans Arabic, with Satoshi as
-/// the Latin fallback. Numerals stay Latin everywhere.
-///
-/// Usage:
-///   MaterialApp(
-///     theme: TavoTheme.dark,
-///     locale: const Locale('ar'),
-///     ...
-///   )
+/// TAVO — App theme. Dark, voice-first, Arabic-first.
 abstract class TavoTheme {
   static ThemeData get dark {
     const scheme = ColorScheme.dark(
-      primary: TavoColors.cyan, // the voice / the glow
-      onPrimary: TavoColors.voidBg, // dark text on bright cyan
-      secondary: TavoColors.purple, // the core / memory accents
+      primary: TavoColors.cyan,
+      onPrimary: TavoColors.voidBg,
+      secondary: TavoColors.purple,
       onSecondary: TavoColors.text,
       tertiary: TavoColors.teal,
       onTertiary: TavoColors.voidBg,
@@ -40,55 +27,35 @@ abstract class TavoTheme {
       canvasColor: TavoColors.voidBg,
       splashColor: TavoColors.cyan.withValues(alpha: 0.12),
       highlightColor: TavoColors.cyan.withValues(alpha: 0.06),
-
-      // Arabic-first, Latin fallback. Latin numerals by default.
       fontFamily: TavoType.arabic,
       fontFamilyFallback: const [TavoType.latin],
       textTheme: _textTheme,
-
       appBarTheme: const AppBarTheme(
         backgroundColor: TavoColors.voidBg,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         foregroundColor: TavoColors.text,
-        titleTextStyle: TextStyle(
-          fontFamily: TavoType.arabic,
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: TavoColors.text,
-        ),
       ),
-
       dividerTheme: const DividerThemeData(
         color: Color(0xFF18202E),
         thickness: 1,
         space: 1,
       ),
-
       iconTheme: const IconThemeData(color: TavoColors.text, size: 24),
-
-      // Cards / sheets sit on the elevated surface tone.
       cardTheme: CardThemeData(
         color: TavoColors.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         margin: EdgeInsets.zero,
       ),
-
-      // Default filled button = solid cyan. The gradient is reserved for the
-      // primary CTA only — use [TavoGradientButton] for that, not this.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: TavoColors.cyan,
           foregroundColor: TavoColors.voidBg,
           minimumSize: const Size.fromHeight(54),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           textStyle: const TextStyle(
             fontFamily: TavoType.arabic,
             fontSize: 16,
@@ -96,22 +63,17 @@ abstract class TavoTheme {
           ),
         ),
       ),
-
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: TavoColors.text,
           side: const BorderSide(color: TavoColors.muted, width: 1),
           minimumSize: const Size.fromHeight(54),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
-
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(foregroundColor: TavoColors.cyan),
       ),
-
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: TavoColors.surface,
@@ -131,7 +93,6 @@ abstract class TavoTheme {
           borderSide: const BorderSide(color: TavoColors.cyan, width: 1.5),
         ),
       ),
-
       snackBarTheme: const SnackBarThemeData(
         backgroundColor: TavoColors.surface,
         contentTextStyle: TextStyle(color: TavoColors.text),
@@ -141,7 +102,6 @@ abstract class TavoTheme {
   }
 
   static const TextTheme _textTheme = TextTheme(
-    // Wordmark / hero — Latin geometric (Satoshi).
     displayLarge: TextStyle(
       fontFamily: TavoType.latin,
       fontSize: 44,
@@ -171,9 +131,8 @@ abstract class TavoTheme {
   );
 }
 
-/// The primary call-to-action button, filled with the signature gradient
-/// (#35E7FF → #A45CFF). Use this ONLY for the single primary action on a
-/// screen — the gradient loses its meaning if it is everywhere.
+/// Primary CTA filled with the signature gradient. Use for the single
+/// primary action on a screen only.
 class TavoGradientButton extends StatelessWidget {
   const TavoGradientButton({
     super.key,
