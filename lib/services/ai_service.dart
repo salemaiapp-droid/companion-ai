@@ -1,63 +1,25 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'ai/ai_provider.dart';
+import 'ai/openai_provider.dart';
+import 'ai/prompt_builder.dart';
 
+/// TAVO — AI conversation service.
+///
+/// Phase 1 of the architecture refactor: no longer talks to OpenAI
+/// directly (see lib/services/ai/*), no longer holds one giant prompt
+/// string (see PromptBuilder). Public API unchanged — nothing else in
+/// the app needed to change.
 class AiService {
-  static const _model = 'gpt-4o-mini';
-  static const _endpoint = 'https://api.openai.com/v1/chat/completions';
+  // Swap providers here — zero other code changes needed anywhere.
+  static final AiProvider _provider = OpenAiProvider();
 
-  static const _systemPrompt = '''
-أنت TAVO — رفيق صوتي يقود المحادثة، ولست بوت أسئلة وأجوبة ولست مساعداً.
-
-اللغة إلزامية: تتحدّث باللهجة السعودية العامية الحقيقية، وليس الفصحى ولا لهجة مصطنعة أو "فصحى مبسّطة". استخدم كلمات ولهجة سعودية فعلية في كل جملة: وش، ليش، عشان، تراه/تراها، الحين، زين، أبد، يعطيك العافية، إيه، ماشي، أكيد، صراحة، بصراحة، كذا، هالشي، أبي/أبغى، حبيت، عادي، شكله، يمديك، لا يهمك. لا تستخدم أبداً صيغاً فصيحة مثل "إنّ"، "لذا"، "بيد أنّ"، "غالباً ما"، "يُعتبر"، أو تراكيب رسمية مكتوبة.
-
-القاعدة الذهبية: المستخدم يدخل محادثة قائمة بالفعل، لا يبدأ واحدة. أنت من يتكلّم أولاً ودائماً.
-
-قاعدة صارمة عن المقاطعة: أي رسالة تبدأ بـ "[مقاطعة]" تعني إن المستخدم قاطعك وأنت لسه تتكلّم عن موضوع ثاني. في هالحالة اترك الموضوع القديم فوراً وبلا رجعة، ولا تكمله ولا تشير له إطلاقاً، وتفاعل بالكامل مع طلبه الجديد وكأن الموضوع القديم ما كان موجود من الأساس.
-
-ممنوع منعاً باتاً: "كيف يمكنني مساعدتك؟" / "هل تحتاج شيئاً آخر؟" / الأسئلة العامة النمطية ("كيف كان يومك؟") / السكوت وانتظار المستخدم.
-
-بدل كذا، دائماً:
-- ابدأ بشيء ملموس: قصة، معلومة غريبة، رأي صريح.
-- إذا خلص الموضوع، انتقل بسلاسة لموضوع ثاني بنفسك.
-- ردودك قصيرة إلى متوسطة، بلا نقاط، بلا عبارات افتتاح آلية.
-''';
-
-  Future<String> _call(List<Map<String, String>> messages) async {
-    final apiKey = dotenv.env['OPENAI_API_KEY'];
-    if (apiKey == null || apiKey.isEmpty) {
-      throw StateError('OPENAI_API_KEY missing — check .env');
-    }
-
-    final response = await http.post(
-      Uri.parse(_endpoint),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      },
-      body: jsonEncode({
-        'model': _model,
-        'messages': messages,
-        'temperature': 1.0,
-        'presence_penalty': 0.7,
-        'max_tokens': 300,
-      }),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('OpenAI error ${response.statusCode}: ${response.body}');
-    }
-
-    final data = jsonDecode(utf8.decode(response.bodyBytes));
-    return (data['choices'][0]['message']['content'] as String).trim();
-  }
-
-  Future<String> openConversation() {
-    return _call([
-      {'role': 'system', 'content': _systemPrompt},
+  Future<String> openConversation({required String timeGreeting}) {
+    final systemPrompt = PromptBuilder.build();
+    return _provider.complete([
+      {'role': 'system', 'content': systemPrompt},
       {
         'role': 'user',
-        'content': '[بداية الجلسة — ابدأ أنت الحديث الحين بشيء مثير، بلا سؤال عن رغبة المستخدم]',
+        'content':
+            '[بداية الجلسة — افتتح حديثك بتحية "$timeGreeting" بالضبط، ثم انتقل مباشرة لموضوع أو قصة أو رأي من الواقع العربي أو الخليجي، بدون إنهاء كلامك بسؤال إطلاقاً]',
       },
     ]);
   }
@@ -66,22 +28,27 @@ class AiService {
     String userMessage, {
     required List<Map<String, String>> history,
     bool wasInterruption = false,
+    bool allowQuestion = false,
   }) {
-    final content = wasInterruption ? '[مقاطعة] $userMessage' : userMessage;
-    return _call([
-      {'role': 'system', 'content': _systemPrompt},
+    final systemPrompt = PromptBuilder.build();
+    final tag = wasInterruption ? '[مقاطعة] ' : '';
+    final permission = allowQuestion ? '' : ' [لا تنهِ ردّك بسؤال هالمرة]';
+    return _provider.complete([
+      {'role': 'system', 'content': systemPrompt},
       ...history,
-      {'role': 'user', 'content': content},
+      {'role': 'user', 'content': '$tag$userMessage$permission'},
     ]);
   }
 
   Future<String> continueTalking({required List<Map<String, String>> history}) {
-    return _call([
-      {'role': 'system', 'content': _systemPrompt},
+    final systemPrompt = PromptBuilder.build();
+    return _provider.complete([
+      {'role': 'system', 'content': systemPrompt},
       ...history,
       {
         'role': 'user',
-        'content': '[سكوت من المستخدم — كمّل أنت الحديث بشكل طبيعي، انتقل لفكرة جديدة أو زد تفصيل]',
+        'content':
+            '[استمرار طبيعي — اربط بجسر منطقي بين اللي قلته وبين فكرة أو قصة جديدة من الواقع العربي/الخليجي، بلا قفزة مفاجئة. ممنوع إنهاء الرد بسؤال]',
       },
     ]);
   }

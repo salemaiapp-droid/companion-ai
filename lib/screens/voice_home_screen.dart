@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../services/ai_service.dart';
+import '../services/tts_service.dart';
 import '../theme/brand_tokens.dart';
 import '../widgets/orb.dart';
 
@@ -17,6 +19,8 @@ class VoiceHomeScreen extends StatefulWidget {
 
 class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
   final AiService _ai = AiService();
+  final TtsService _tts = TtsService();
+  final AudioPlayer _player = AudioPlayer();
   final stt.SpeechToText _speech = stt.SpeechToText();
 
   OrbState _orb = OrbState.idle;
@@ -27,11 +31,14 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
 
   final List<Map<String, String>> _history = [];
 
-  static const _silenceTimeout = Duration(seconds: 9);
+  static const _silenceTimeout = Duration(seconds: 2);
   Timer? _silenceTimer;
 
-  bool _userInterrupted = false;
   String _lastWords = '';
+
+  int _repliesSinceQuestion = 0;
+  bool get _mayAskThisTurn => _repliesSinceQuestion >= 3;
+  bool _endsWithQuestion(String text) => text.trim().endsWith('؟');
 
   @override
   void initState() {
@@ -43,6 +50,7 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
   void dispose() {
     _silenceTimer?.cancel();
     _speech.stop();
+    _player.dispose();
     super.dispose();
   }
 
@@ -60,13 +68,16 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     await _openConversation();
   }
 
+  /// Uses the device's real local time to pick صباح/مساء الخير.
   Future<void> _openConversation() async {
     setState(() {
       _orb = OrbState.thinking;
       _error = null;
     });
     try {
-      final line = await _ai.openConversation();
+      final hour = DateTime.now().hour;
+      final greeting = (hour >= 4 && hour < 12) ? 'صباح الخير' : 'مساء الخير';
+      final line = await _ai.openConversation(timeGreeting: greeting);
       if (!mounted) return;
       await _speak(line);
     } catch (e) {
@@ -80,26 +91,40 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
 
   Future<void> _speak(String text) async {
     _silenceTimer?.cancel();
-    _userInterrupted = false;
+    _speech.stop();
     setState(() {
       _orb = OrbState.speaking;
-      _shownLine = '';
+      _shownLine = text;
     });
 
-    _startListening();
+    Duration estimate = Duration(milliseconds: (text.length * 55).clamp(1200, 30000));
+    bool audioOk = false;
+    try {
+      final bytes = await _tts.synthesize(text);
+      if (!mounted) return;
+      await _player.play(BytesSource(bytes, mimeType: 'audio/mpeg'));
+      audioOk = true;
+    } catch (_) {}
 
-    for (int i = 1; i <= text.length; i++) {
-      if (!mounted || _userInterrupted) break;
-      setState(() => _shownLine = text.substring(0, i));
-      await Future.delayed(const Duration(milliseconds: 24));
+    bool completed = false;
+    StreamSubscription? sub;
+    if (audioOk) {
+      sub = _player.onPlayerComplete.listen((_) => completed = true);
     }
+
+    final deadline = DateTime.now().add(estimate + const Duration(seconds: 4));
+    while (mounted && !completed && DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
+    await sub?.cancel();
     if (!mounted) return;
 
-    if (!_userInterrupted) {
-      _history.add({'role': 'assistant', 'content': text});
-      setState(() => _orb = OrbState.listening);
-      _armSilenceTimer();
-    }
+    _history.add({'role': 'assistant', 'content': text});
+    _repliesSinceQuestion = _endsWithQuestion(text) ? 0 : _repliesSinceQuestion + 1;
+
+    setState(() => _orb = OrbState.listening);
+    _startListening();
+    _armSilenceTimer();
   }
 
   void _armSilenceTimer() {
@@ -129,7 +154,7 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
       _speech.listen(
         onResult: _onSpeechResult,
         listenFor: const Duration(seconds: 55),
-        pauseFor: const Duration(seconds: 2, milliseconds: 500),
+        pauseFor: const Duration(seconds: 2),
         localeId: 'ar-SA',
         partialResults: true,
         cancelOnError: true,
@@ -137,19 +162,9 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     } catch (_) {}
   }
 
-  // Tracks whether the utterance we're about to send actually cut TAVO off
-  // mid-sentence — that's what makes it a real interruption, not just a
-  // normal reply given during idle listening.
-  bool _pendingIsInterruption = false;
-
   void _onSpeechResult(dynamic result) {
     final words = (result.recognizedWords as String).trim();
     if (words.isNotEmpty) _lastWords = words;
-
-    if (_orb == OrbState.speaking && words.length > 2) {
-      if (!_userInterrupted) _pendingIsInterruption = true;
-      _userInterrupted = true;
-    }
 
     if (result.finalResult == true && words.isNotEmpty) {
       _silenceTimer?.cancel();
@@ -169,7 +184,9 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
       _silenceTimer?.cancel();
       _onFinalSpeech(captured);
     } else {
-      Future.delayed(const Duration(milliseconds: 300), _startListening);
+      if (_orb == OrbState.listening) {
+        Future.delayed(const Duration(milliseconds: 300), _startListening);
+      }
     }
   }
 
@@ -177,9 +194,6 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     if (_busy) return;
     _busy = true;
     _speech.stop();
-
-    final wasInterruption = _pendingIsInterruption;
-    _pendingIsInterruption = false;
 
     setState(() {
       _orb = OrbState.thinking;
@@ -190,7 +204,7 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
       final reply = await _ai.reply(
         text,
         history: _history,
-        wasInterruption: wasInterruption,
+        allowQuestion: _mayAskThisTurn,
       );
       _history.add({'role': 'user', 'content': text});
       if (!mounted) return;
