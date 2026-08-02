@@ -129,7 +129,7 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
       _speech.listen(
         onResult: _onSpeechResult,
         listenFor: const Duration(seconds: 55),
-        pauseFor: const Duration(seconds: 2),
+        pauseFor: const Duration(seconds: 2, milliseconds: 500),
         localeId: 'ar-SA',
         partialResults: true,
         cancelOnError: true,
@@ -137,11 +137,17 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     } catch (_) {}
   }
 
+  // Tracks whether the utterance we're about to send actually cut TAVO off
+  // mid-sentence — that's what makes it a real interruption, not just a
+  // normal reply given during idle listening.
+  bool _pendingIsInterruption = false;
+
   void _onSpeechResult(dynamic result) {
     final words = (result.recognizedWords as String).trim();
     if (words.isNotEmpty) _lastWords = words;
 
     if (_orb == OrbState.speaking && words.length > 2) {
+      if (!_userInterrupted) _pendingIsInterruption = true;
       _userInterrupted = true;
     }
 
@@ -172,13 +178,20 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     _busy = true;
     _speech.stop();
 
+    final wasInterruption = _pendingIsInterruption;
+    _pendingIsInterruption = false;
+
     setState(() {
       _orb = OrbState.thinking;
       _error = null;
     });
 
     try {
-      final reply = await _ai.reply(text, history: _history);
+      final reply = await _ai.reply(
+        text,
+        history: _history,
+        wasInterruption: wasInterruption,
+      );
       _history.add({'role': 'user', 'content': text});
       if (!mounted) return;
       _busy = false;
@@ -199,27 +212,39 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     return Scaffold(
       backgroundColor: TavoColors.voidBg,
       body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TavoOrb(state: _orb, size: 200),
-              const SizedBox(height: 56),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  _error ?? _shownLine,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: TavoType.arabic,
-                    fontSize: 20,
-                    height: 1.6,
-                    color: _error != null ? Colors.redAccent : TavoColors.text,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        TavoOrb(state: _orb, size: 200),
+                        const SizedBox(height: 56),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            _error ?? _shownLine,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: TavoType.arabic,
+                              fontSize: 20,
+                              height: 1.6,
+                              color: _error != null ? Colors.redAccent : TavoColors.text,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
