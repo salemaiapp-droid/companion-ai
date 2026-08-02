@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/splash_screen.dart';
+import 'screens/voice_home_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'services/user_prefs.dart';
 import 'theme/app_theme.dart';
@@ -11,10 +12,6 @@ void main() {
 }
 
 /// TAVO — application root.
-///
-/// Applies the brand [TavoTheme.dark] and forces Arabic-first RTL. The actual
-/// screen flow lives in [_TavoRoot], built *under* [MaterialApp] so its
-/// context has a Navigator to push/replace with.
 class TavoApp extends StatelessWidget {
   const TavoApp({super.key});
 
@@ -33,9 +30,7 @@ class TavoApp extends StatelessWidget {
   }
 }
 
-/// Owns the top-level flow: splash → (welcome, only if first time) → home.
-/// Because this widget sits below [MaterialApp], `context` here is under a
-/// [Navigator], so pushReplacement works.
+/// Owns the top-level flow: splash → (welcome, only if first time) → Voice Home.
 class _TavoRoot extends StatelessWidget {
   const _TavoRoot();
 
@@ -43,18 +38,16 @@ class _TavoRoot extends StatelessWidget {
   Widget build(BuildContext context) {
     return SplashScreen(
       onComplete: () async {
-        // Returning user? Skip onboarding, greet them by name.
         final saved = await UserPrefs.load();
         if (!context.mounted) return;
 
         if (saved != null) {
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => _PlaceholderHome(name: saved.name)),
+            MaterialPageRoute(builder: (_) => VoiceHomeScreen(userName: saved.name)),
           );
           return;
         }
 
-        // First time — run the voice onboarding.
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (welcomeContext) => WelcomeScreen(
@@ -63,7 +56,7 @@ class _TavoRoot extends StatelessWidget {
                 if (!welcomeContext.mounted) return;
                 Navigator.of(welcomeContext).pushReplacement(
                   MaterialPageRoute(
-                    builder: (_) => _PlaceholderHome(name: result.name),
+                    builder: (_) => VoiceHomeScreen(userName: result.name),
                   ),
                 );
               },
@@ -71,21 +64,6 @@ class _TavoRoot extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-/// Temporary landing screen until the real main experience (Voice Home) is built.
-class _PlaceholderHome extends StatelessWidget {
-  const _PlaceholderHome({required this.name});
-
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    final who = name.isEmpty ? '' : '، $name';
-    return Scaffold(
-      body: Center(child: Text('مرحباً بك في TAVO$who')),
     );
   }
 }
