@@ -36,6 +36,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.3.0
   shared_preferences: ^2.5.5
+  flutter_dotenv: ^6.0.1
+  http: ^1.6.0
+  speech_to_text: ^7.4.0
 
 dev_dependencies:
   flutter_test:
@@ -61,7 +64,7 @@ flutter:
 
   assets:
     - assets/branding/
-
+    - .env
   fonts:
     - family: Satoshi
       fonts:
