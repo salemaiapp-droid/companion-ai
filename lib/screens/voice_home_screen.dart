@@ -1,10 +1,11 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../services/ai_service.dart';
 import '../services/tts_service.dart';
+import '../services/ai/voice_director.dart';
 import '../theme/brand_tokens.dart';
 import '../widgets/orb.dart';
 
@@ -20,6 +21,7 @@ class VoiceHomeScreen extends StatefulWidget {
 class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
   final AiService _ai = AiService();
   final TtsService _tts = TtsService();
+  final VoiceDirector _voice = VoiceDirector();
   final AudioPlayer _player = AudioPlayer();
   final stt.SpeechToText _speech = stt.SpeechToText();
 
@@ -35,10 +37,6 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
   Timer? _silenceTimer;
 
   String _lastWords = '';
-
-  int _repliesSinceQuestion = 0;
-  bool get _mayAskThisTurn => _repliesSinceQuestion >= 3;
-  bool _endsWithQuestion(String text) => text.trim().endsWith('؟');
 
   @override
   void initState() {
@@ -68,7 +66,6 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     await _openConversation();
   }
 
-  /// Uses the device's real local time to pick صباح/مساء الخير.
   Future<void> _openConversation() async {
     setState(() {
       _orb = OrbState.thinking;
@@ -89,7 +86,15 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     }
   }
 
-  Future<void> _speak(String text) async {
+  /// Mic stays OFF for the whole time TAVO's audio is playing. This isn't
+  /// about acoustic echo (confirmed false — headphones + silence still
+  /// produced noise) — it's the browser's mic-capture and audio-playback
+  /// subsystems genuinely contending for resources when both run at once,
+  /// which shows up as static/glitching. Mic turns back on the instant
+  /// playback ends, so the user can jump in freely in that gap.
+  Future<void> _speak(String rawText) async {
+    final text = _voice.prepare(rawText);
+
     _silenceTimer?.cancel();
     _speech.stop();
     setState(() {
@@ -120,10 +125,8 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     if (!mounted) return;
 
     _history.add({'role': 'assistant', 'content': text});
-    _repliesSinceQuestion = _endsWithQuestion(text) ? 0 : _repliesSinceQuestion + 1;
-
     setState(() => _orb = OrbState.listening);
-    _startListening();
+    _startListening(); // mic turns on only NOW, after audio has fully stopped
     _armSilenceTimer();
   }
 
@@ -201,11 +204,7 @@ class _VoiceHomeScreenState extends State<VoiceHomeScreen> {
     });
 
     try {
-      final reply = await _ai.reply(
-        text,
-        history: _history,
-        allowQuestion: _mayAskThisTurn,
-      );
+      final reply = await _ai.reply(text, history: _history);
       _history.add({'role': 'user', 'content': text});
       if (!mounted) return;
       _busy = false;

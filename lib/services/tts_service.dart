@@ -4,13 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// TAVO — text-to-speech via ElevenLabs, using Salem's cloned voice.
-///
-/// After 4 rounds of tuning (stumbling → robotic → mispronounced →
-/// tense/strained), no combination fully satisfied — this strongly
-/// suggests Instant Voice Clone is near its ceiling. Reverted to the
-/// original neutral baseline as the most stable known point. If this
-/// still isn't fully natural, the real fix is Professional Voice Clone
-/// (30+ min sample, paid Creator tier), not further slider tuning.
+/// Reverted to eleven_multilingual_v2 — eleven_turbo_v2_5 introduced loud
+/// static/audio artifacts, not worth the latency gain.
 class TtsService {
   static const _voiceId = 'vQdTBceFqJdj2D3Ug7Ow';
   static String get _endpoint =>
